@@ -554,37 +554,39 @@ def main() -> None:
                 variables_args.extend(["-var-file", f])
 
         # only use an existing plan file if we're not in the deprecated "planned" mode
-        if plan_file and state != "planned":
-            if not any([os.path.isfile(project_path + "/" + plan_file), os.path.isfile(plan_file)]):
-                raise TerraformError('Could not find plan_file "{0}", check the path and try again.'.format(plan_file))
+        # if plan_file and state != "planned":
 
-            plan_file_needs_application = True
-            plan_file_to_apply = plan_file
-        else:
-            f, new_plan_file = tempfile.mkstemp(suffix=".tfplan")
-            plan_result_changed, plan_result_any_destroyed, plan_stdout, plan_stderr = terraform.plan(
-                target_plan_file_path=new_plan_file,
-                targets=module.params.get("targets"),
-                destroy=state == "absent",
-                state_args=get_state_args(state_file),
-                variables_args=variables_args,
+        #     if not any([os.path.isfile(project_path + "/" + plan_file), os.path.isfile(plan_file)]):
+        #         raise TerraformError('Could not find plan_file "{0}", check the path and try again.'.format(plan_file))
+
+        #     plan_file_needs_application = True
+        #     plan_file_to_apply = plan_file
+        # else:
+
+        f, new_plan_file = tempfile.mkstemp(suffix=".tfplan")
+        plan_result_changed, plan_result_any_destroyed, plan_stdout, plan_stderr = terraform.plan(
+            target_plan_file_path=new_plan_file,
+            targets=module.params.get("targets"),
+            destroy=state == "absent",
+            state_args=get_state_args(state_file),
+            variables_args=variables_args,
+        )
+
+        # if we have an explicit plan file specified, copy over the temporary one
+        if plan_file:
+            module.preserved_copy(new_plan_file, project_path + "/" + plan_file)
+
+        if computed_state == "present" and plan_result_any_destroyed and check_destroy:
+            raise TerraformError(
+                "Aborting command because it would destroy some resources. "
+                "Consider switching the 'check_destroy' to false to suppress this error"
             )
 
-            # if we have an explicit plan file specified, copy over the temporary one
-            if plan_file:
-                module.preserved_copy(new_plan_file, project_path + "/" + plan_file)
-
-            if computed_state == "present" and plan_result_any_destroyed and check_destroy:
-                raise TerraformError(
-                    "Aborting command because it would destroy some resources. "
-                    "Consider switching the 'check_destroy' to false to suppress this error"
-                )
-
-            plan_file_needs_application = plan_result_changed
-            plan_file_to_apply = new_plan_file
-            module.add_cleanup_file(new_plan_file)
-            out = plan_stdout
-            err = plan_stderr
+        plan_file_needs_application = plan_result_changed
+        plan_file_to_apply = new_plan_file
+        module.add_cleanup_file(new_plan_file)
+        out = plan_stdout
+        err = plan_stderr
 
         preflight_validation(terraform, terraform_binary, project_path, checked_version, variables_args)
 
