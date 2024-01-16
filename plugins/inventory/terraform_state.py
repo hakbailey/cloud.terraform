@@ -31,6 +31,12 @@ options:
       - A Terraform backend configuration to an existing state file.
     type: str
     required: true
+  backend_config_file:
+    description:
+      - The path to a configuration file to provide at init state to the -backend-config parameter.
+    type: str
+    env:
+      - name: TF_BACKEND_CONFIG_FILE
   search_child_modules:
     description:
       - Whether to include resources from Terraform child modules.
@@ -495,6 +501,7 @@ class InventoryModule(TerraformInventoryPluginBase, Constructable):  # type: ign
         self,
         terraform_binary: str,
         backend_config: str,
+        backend_config_file: str,
         search_child_modules: bool,
         providers: List[TerraformProviderInstance],
     ) -> List[TerraformModuleResource]:
@@ -502,7 +509,7 @@ class InventoryModule(TerraformInventoryPluginBase, Constructable):  # type: ign
             write_terraform_config(backend_config, os.path.join(temp_dir, "main.tf"))
             terraform = TerraformCommands(module_run_command, temp_dir, terraform_binary, False)
             try:
-                terraform.init()
+                terraform.init(backend_config_files=[backend_config_file])
                 result = terraform.show()
                 instances: List[TerraformModuleResource] = []
                 if result:
@@ -548,8 +555,8 @@ class InventoryModule(TerraformInventoryPluginBase, Constructable):  # type: ign
         super(InventoryModule, self).parse(inventory, loader, path, cache=cache)
 
         cfg = self.read_config_data(path)  # type: ignore  # mypy ignore
-
         backend_config = cfg.get("backend_config")
+        backend_config_file = self.get_option("backend_config_file")
         terraform_binary = cfg.get("binary_path")
         search_child_modules = cfg.get("search_child_modules", False)
         include_providers = cfg.get("include_providers", [])
@@ -564,7 +571,7 @@ class InventoryModule(TerraformInventoryPluginBase, Constructable):  # type: ign
             terraform_binary = process.get_bin_path("terraform")
 
         providers = create_providers_list(include_providers, exclude_providers)
-        instances = self._query(terraform_binary, backend_config, search_child_modules, providers)
+        instances = self._query(terraform_binary, backend_config, backend_config_file, search_child_modules, providers)
         self.create_inventory(
             instances, cfg.get("hostnames"), cfg.get("compose"), cfg.get("keyed_groups"), cfg.get("strict")
         )
